@@ -183,10 +183,12 @@ embedding_size = 300  # Dimension of the embedding vector.
 skip_window = 5  # How many words to consider left and right.
 num_skips = 8  # How many times to reuse an input to generate a label.
 num_sampled = 64  # Number of negative examples to sample.
+learning_rate = 1
 
 context_complexity = context_complexity_len # Function to compute complexity
 single_word = False # Consider the whole window for complexity
 include_center = False # Include center word into complexity computation
+alpha = 1 # Weight for context loss compared to complexity loss
 
 valid_size = 16  # Random set of words to evaluate similarity on.
 valid_window = 100  # Only pick dev samples in the head of the distribution.
@@ -218,7 +220,7 @@ with graph.as_default():
               stddev=1.0 / math.sqrt(embedding_size)))
       # Weights for complexity computation
       complexity_weights = tf.Variable( \
-              tf.random_uniform([batch_size, 1], -1.0, 1.0))
+              tf.random_uniform([embedding_size, 1], -1.0, 1.0))
     with tf.name_scope('biases'):
       nce_biases = tf.Variable(tf.zeros([vocabulary_size]))
 
@@ -241,19 +243,23 @@ with graph.as_default():
     complexity_prediction = tf.matmul(embed, complexity_weights)
     loss_complexity = tf.losses.\
             mean_squared_error(train_complexity, complexity_prediction)
-    # Whole network loss as sum of context and complexity loss
-    loss = loss_context + loss_complexity
+    # Whole network loss as sum ofweighted context and complexity loss
+    w_loss_context = tf.scalar_mul(alpha, loss_context)
+    w_loss_complexity = tf.scalar_mul((1 - alpha), loss_complexity)
+    loss = w_loss_context + w_loss_complexity
 
   # Add the loss values as a scalar to summary.
   tf.summary.scalar('loss', loss)
-  tf.summary.scalar('loss_context', loss_context)
-  tf.summary.scalar('loss_complexity', loss_complexity)
+  tf.summary.scalar('loss_context', w_loss_context)
+  tf.summary.scalar('loss_complexity', w_loss_complexity)
 
   # Construct the SGD optimizer using a learning rate of 1.0.
   with tf.name_scope('optimizer'):
-    optimizer = tf.train.GradientDescentOptimizer(1.0).minimize(loss)
-    optimizer_context = tf.train.GradientDescentOptimizer(1.0).minimize(loss_context)
-    optimizer_complexity = tf.train.GradientDescentOptimizer(1.0).minimize(loss_complexity)
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss)
+    optimizer_context = tf.train.\
+        GradientDescentOptimizer(learning_rate).minimize(w_loss_context)
+    optimizer_complexity = tf.train.\
+        GradientDescentOptimizer(learning_rate).minimize(w_loss_complexity)
 
   # Compute the cosine similarity between minibatch examples and all embeddings.
   norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings), 1, keep_dims=True))
@@ -275,73 +281,77 @@ with graph.as_default():
 # Step 5: Begin training.
 num_steps = 100001
 
-#with tf.Session(graph=graph) as session:
-#  # Open a writer to write summaries.
-#  writer = tf.summary.FileWriter(FLAGS.log_dir, session.graph)
-#
-#  # We must initialize all variables before we use them.
-#  init.run()
-#  print('Initialized')
-#
-#  average_loss = 0
-#  for step in xrange(num_steps):
-#    batch_inputs, batch_labels = generate_batch(batch_size, num_skips,
-#                                                skip_window)
-#    feed_dict = {train_inputs: batch_inputs, train_labels: batch_labels}
-#
-#    # Define metadata variable.
-#    run_metadata = tf.RunMetadata()
-#
-#    # We perform one update step by evaluating the optimizer op (including it
-#    # in the list of returned values for session.run()
-#    # Also, evaluate the merged op to get all summaries from the returned "summary" variable.
-#    # Feed metadata variable to session for visualizing the graph in TensorBoard.
-#    _, summary, loss_val = session.run(
-#        [optimizer, merged, loss],
-#        feed_dict=feed_dict,
-#        run_metadata=run_metadata)
-#    average_loss += loss_val
-#
-#    # Add returned summaries to writer in each step.
-#    writer.add_summary(summary, step)
-#    # Add metadata to visualize the graph for the last run.
-#    if step == (num_steps - 1):
-#      writer.add_run_metadata(run_metadata, 'step%d' % step)
-#
-#    if step % 2000 == 0:
-#      if step > 0:
-#        average_loss /= 2000
-#      # The average loss is an estimate of the loss over the last 2000 batches.
-#      print('Average loss at step ', step, ': ', average_loss)
-#      average_loss = 0
-#
-#    # Note that this is expensive (~20% slowdown if computed every 500 steps)
-#    if step % 10000 == 0:
-#      sim = similarity.eval()
-#      for i in xrange(valid_size):
-#        valid_word = reverse_dictionary[valid_examples[i]]
-#        top_k = 8  # number of nearest neighbors
-#        nearest = (-sim[i, :]).argsort()[1:top_k + 1]
-#        log_str = 'Nearest to %s:' % valid_word
-#        for k in xrange(top_k):
-#          close_word = reverse_dictionary[nearest[k]]
-#          log_str = '%s %s,' % (log_str, close_word)
-#        print(log_str)
-#  final_embeddings = normalized_embeddings.eval()
-#
-#  # Write corresponding labels for the embeddings.
-#  with open(FLAGS.log_dir + '/metadata.tsv', 'w') as f:
-#    for i in xrange(vocabulary_size):
-#      f.write(reverse_dictionary[i] + '\n')
-#
-#  # Save the model for checkpoints.
-#  saver.save(session, os.path.join(FLAGS.log_dir, 'model.ckpt'))
-#
-#  # Create a configuration for visualizing embeddings with the labels in TensorBoard.
-#  config = projector.ProjectorConfig()
-#  embedding_conf = config.embeddings.add()
-#  embedding_conf.tensor_name = embeddings.name
-#  embedding_conf.metadata_path = os.path.join(FLAGS.log_dir, 'metadata.tsv')
-#  projector.visualize_embeddings(writer, config)
-#
-#writer.close()
+with tf.Session(graph=graph) as session:
+  # Open a writer to write summaries.
+  writer = tf.summary.FileWriter(FLAGS.log_dir, session.graph)
+
+  # We must initialize all variables before we use them.
+  init.run()
+  print('Initialized')
+
+  average_loss = 0
+  for step in xrange(num_steps):
+    batch_inputs, batch_labels, batch_complexity = \
+        generate_batch(batch_size, num_skips, skip_window, \
+                       context_complexity=context_complexity, \
+                       single_word=single_word, include_center=include_center)
+    feed_dict = {train_inputs: batch_inputs, 
+                 train_labels: batch_labels,
+                 train_complexity : batch_complexity}
+
+    # Define metadata variable.
+    run_metadata = tf.RunMetadata()
+
+    # We perform one update step by evaluating the optimizer op (including it
+    # in the list of returned values for session.run()
+    # Also, evaluate the merged op to get all summaries from the returned "summary" variable.
+    # Feed metadata variable to session for visualizing the graph in TensorBoard.
+    _, summary, loss_val = session.run(
+        [optimizer, merged, loss],
+        feed_dict=feed_dict,
+        run_metadata=run_metadata)
+    average_loss += loss_val
+
+    # Add returned summaries to writer in each step.
+    writer.add_summary(summary, step)
+    # Add metadata to visualize the graph for the last run.
+    if step == (num_steps - 1):
+      writer.add_run_metadata(run_metadata, 'step%d' % step)
+
+    if step % 2000 == 0:
+      if step > 0:
+        average_loss /= 2000
+      # The average loss is an estimate of the loss over the last 2000 batches.
+      print('Average loss at step ', step, ': ', average_loss)
+      average_loss = 0
+
+    # Note that this is expensive (~20% slowdown if computed every 500 steps)
+    if step % 10000 == 0:
+      sim = similarity.eval()
+      for i in xrange(valid_size):
+        valid_word = reverse_dictionary[valid_examples[i]]
+        top_k = 8  # number of nearest neighbors
+        nearest = (-sim[i, :]).argsort()[1:top_k + 1]
+        log_str = 'Nearest to %s:' % valid_word
+        for k in xrange(top_k):
+          close_word = reverse_dictionary[nearest[k]]
+          log_str = '%s %s,' % (log_str, close_word)
+        print(log_str)
+  final_embeddings = normalized_embeddings.eval()
+
+  # Write corresponding labels for the embeddings.
+  with open(FLAGS.log_dir + '/metadata.tsv', 'w') as f:
+    for i in xrange(vocabulary_size):
+      f.write(reverse_dictionary[i] + '\n')
+
+  # Save the model for checkpoints.
+  saver.save(session, os.path.join(FLAGS.log_dir, 'model.ckpt'))
+
+  # Create a configuration for visualizing embeddings with the labels in TensorBoard.
+  config = projector.ProjectorConfig()
+  embedding_conf = config.embeddings.add()
+  embedding_conf.tensor_name = embeddings.name
+  embedding_conf.metadata_path = os.path.join(FLAGS.log_dir, 'metadata.tsv')
+  projector.visualize_embeddings(writer, config)
+
+writer.close()
