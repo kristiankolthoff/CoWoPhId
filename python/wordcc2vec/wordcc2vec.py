@@ -15,13 +15,13 @@
 
 #
 #
-# Adaption of the original word2vec skip-gram TensorFlow implementation
+# Adaption of the original word2vec skip-gram TensorFlow implementation (see licence above)
 # to generate word context complexity encoded word vector representations.
-# Therefore, we modify the way the dataset is builded and adapt the batch
+# Therefore, we modify the way the dataset is built and adapt the batch
 # generation function as well. Finally we also transform the plain skip-gram
 # model to a multi-task learning problem optimizing two loss functions
 # using shared parameters
-#
+# Author: Kristian Kolthoff
 #
 
 
@@ -168,6 +168,7 @@ def generate_batch(batch_size, num_skips, skip_window, \
   return batch, labels, complexity
 
 
+
 batch, labels, complexity = generate_batch(batch_size=8, num_skips=2, \
                             skip_window=1, \
                             context_complexity=context_complexity_len, \
@@ -183,6 +184,10 @@ skip_window = 5  # How many words to consider left and right.
 num_skips = 8  # How many times to reuse an input to generate a label.
 num_sampled = 64  # Number of negative examples to sample.
 
+context_complexity = context_complexity_len # Function to compute complexity
+single_word = False # Consider the whole window for complexity
+include_center = False # Include center word into complexity computation
+
 valid_size = 16  # Random set of words to evaluate similarity on.
 valid_window = 100  # Only pick dev samples in the head of the distribution.
 valid_examples = np.random.choice(valid_window, valid_size, replace=False)
@@ -192,9 +197,12 @@ graph = tf.Graph()
 with graph.as_default():
 
   with tf.name_scope('inputs'):
+    # Context input
     train_inputs = tf.placeholder(tf.int32, shape=[batch_size])
     train_labels = tf.placeholder(tf.int32, shape=[batch_size, 1])
     valid_dataset = tf.constant(valid_examples, dtype=tf.int32)
+    # Complexity inputs
+    train_complexity = tf.placeholder(tf.float64, shape=[batch_size, 1])
 
   with tf.device('/cpu:0'):
     with tf.name_scope('embeddings'):
@@ -203,10 +211,14 @@ with graph.as_default():
       embed = tf.nn.embedding_lookup(embeddings, train_inputs)
 
     with tf.name_scope('weights'):
+      # Embedding representation of context words
       nce_weights = tf.Variable(
           tf.truncated_normal(
               [vocabulary_size, embedding_size],
               stddev=1.0 / math.sqrt(embedding_size)))
+      # Weights for complexity computation
+      complexity_weights = tf.Variable( \
+              tf.random_uniform([batch_size, 1], -1.0, 1.0))
     with tf.name_scope('biases'):
       nce_biases = tf.Variable(tf.zeros([vocabulary_size]))
 
@@ -216,7 +228,8 @@ with graph.as_default():
   # Explanation of the meaning of NCE loss:
   #   http://mccormickml.com/2016/04/19/word2vec-tutorial-the-skip-gram-model/
   with tf.name_scope('loss'):
-    loss = tf.reduce_mean(
+    # Context nce loss
+    loss_context = tf.reduce_mean(
         tf.nn.nce_loss(
             weights=nce_weights,
             biases=nce_biases,
@@ -224,13 +237,23 @@ with graph.as_default():
             inputs=embed,
             num_sampled=num_sampled,
             num_classes=vocabulary_size))
+    # Complexity loss
+    complexity_prediction = tf.matmul(embed, complexity_weights)
+    loss_complexity = tf.losses.\
+            mean_squared_error(train_complexity, complexity_prediction)
+    # Whole network loss as sum of context and complexity loss
+    loss = loss_context + loss_complexity
 
-  # Add the loss value as a scalar to summary.
+  # Add the loss values as a scalar to summary.
   tf.summary.scalar('loss', loss)
+  tf.summary.scalar('loss_context', loss_context)
+  tf.summary.scalar('loss_complexity', loss_complexity)
 
   # Construct the SGD optimizer using a learning rate of 1.0.
   with tf.name_scope('optimizer'):
     optimizer = tf.train.GradientDescentOptimizer(1.0).minimize(loss)
+    optimizer_context = tf.train.GradientDescentOptimizer(1.0).minimize(loss_context)
+    optimizer_complexity = tf.train.GradientDescentOptimizer(1.0).minimize(loss_complexity)
 
   # Compute the cosine similarity between minibatch examples and all embeddings.
   norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings), 1, keep_dims=True))
