@@ -1,5 +1,7 @@
 import numpy as np
+from functools import lru_cache
 
+@lru_cache(maxsize=None)
 def missing_strat_random(word, dim):
     return np.random.rand(dim)
 
@@ -37,6 +39,9 @@ def bootstrap_lexicon(model, vocab, seeds_l, seeds_r, embedding_sim, \
         raise ValueError('Not all left seeds contained in vocabulary')
     if not all(seed in vocab for seed in seeds_r):
         raise ValueError('Not all right seeds contained in vocabulary')
+    num_missing = np.sum([1 for word in vocab if word not in model.vocab])
+    print('Missing vocab in model : {} / {}%'.format(num_missing, \
+          (num_missing/len(vocab)*100)))
     # 1. Initialize the left and right seeds
     se_l = {seed : bound_l for seed in seeds_l}
     se_r = {seed : bound_r for seed in seeds_r}
@@ -101,6 +106,9 @@ def bootstrap_lexicon_simple_norm(model, vocab, seeds_l, seeds_r, embedding_sim,
         raise ValueError('Not all left seeds contained in vocabulary')
     if not all(seed in vocab for seed in seeds_r):
         raise ValueError('Not all right seeds contained in vocabulary')
+    num_missing = np.sum([1 for word in vocab if word not in model.vocab])
+    print('Missing vocab in model : {} / {}%'.format(num_missing, \
+          (num_missing/len(vocab)*100)))
     # 1. Initialize the left and right seeds
     se_l = {seed : bound_l for seed in seeds_l}
     se_r = {seed : bound_r for seed in seeds_r}
@@ -113,8 +121,6 @@ def bootstrap_lexicon_simple_norm(model, vocab, seeds_l, seeds_r, embedding_sim,
         sum_r = np.abs(np.sum([score for word, score in se_r.items()]))
         weight_l = sum_r / (sum_r + sum_l)
         weight_r = sum_l / (sum_r + sum_l)
-        print(sum_l)
-        print(sum_r)
         print('Epoch {} : Se_l_size = {}, Se_r_size = {}, weight_l = {}, weight_r = {},'.format(\
                       curr_epoch, len(se_l), len(se_r), weight_l, weight_r))
         for curr_word in vocab:
