@@ -192,7 +192,7 @@ context_complexity = context_complexity_len # Function to compute complexity
 norm_constant = context_complexity_len_norm_const() #Normalize the labels
 single_word = False # Consider the whole window for complexity
 include_center = False # Include center word into complexity computation
-alpha = 0.10 # Weight for context loss compared to complexity loss
+alpha = 0.7 # Weight for context loss compared to complexity loss
 
 print('Norm_constant : {}'.format(norm_constant))
 
@@ -210,7 +210,7 @@ with graph.as_default():
     train_labels = tf.placeholder(tf.int32, shape=[batch_size, 1])
     valid_dataset = tf.constant(valid_examples, dtype=tf.int32)
     # Complexity inputs
-    train_complexity = tf.placeholder(tf.float64, shape=[batch_size, 1])
+    train_complexity = tf.placeholder(tf.float32, shape=[batch_size, 1])
     norm_train_complexity = tf.scalar_mul((1 / norm_constant), train_complexity)
 
   with tf.device('/cpu:0'):
@@ -249,8 +249,11 @@ with graph.as_default():
     # Complexity loss
     complexity_prediction = tf.matmul(embed, complexity_weights)
     sig_complexity_prediction = tf.sigmoid(complexity_prediction)
-    loss_complexity = tf.losses.\
-            mean_squared_error(norm_train_complexity, sig_complexity_prediction)
+    #loss_complexity = tf.losses.\
+     #       mean_squared_error(norm_train_complexity, sig_complexity_prediction)
+    # Compute the cross-entropy loss for complexity prediction
+    loss_complexity = tf.reduce_mean(-tf.reduce_sum(\
+            norm_train_complexity*tf.log(sig_complexity_prediction)))
     # Whole network loss as sum ofweighted context and complexity loss
     w_loss_context = tf.scalar_mul(alpha, loss_context)
     w_loss_complexity = tf.scalar_mul((1 - alpha), loss_complexity)
