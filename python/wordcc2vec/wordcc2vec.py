@@ -119,6 +119,9 @@ print('Most common words (+UNK)', count[:5])
 print('Sample data', data[:10], [reverse_dictionary[i] for i in data[:10]])
 
 
+def context_complexity_len_norm_const():
+    return np.max([len(vocab) for vocab in dictionary.keys()])
+
 def context_complexity_len(window_tokens):
     context = [reverse_dictionary[index] for index in window_tokens]
     return np.mean([len(word) for word in context])
@@ -178,17 +181,20 @@ for i in range(8):
         reverse_dictionary[labels[i, 0]], '->', complexity[i, 0])
 
 
-batch_size = 128
+batch_size = 128 # Number of training samples evaluated at once
 embedding_size = 300  # Dimension of the embedding vector.
 skip_window = 5  # How many words to consider left and right.
 num_skips = 8  # How many times to reuse an input to generate a label.
 num_sampled = 64  # Number of negative examples to sample.
-learning_rate = 1
+learning_rate = 0.3 # Learning rate for gradient update
 
 context_complexity = context_complexity_len # Function to compute complexity
+norm_constant = context_complexity_len_norm_const() #Normalize the labels
 single_word = False # Consider the whole window for complexity
 include_center = False # Include center word into complexity computation
-alpha = 1 # Weight for context loss compared to complexity loss
+alpha = 0.10 # Weight for context loss compared to complexity loss
+
+print('Norm_constant : {}'.format(norm_constant))
 
 valid_size = 16  # Random set of words to evaluate similarity on.
 valid_window = 100  # Only pick dev samples in the head of the distribution.
@@ -205,6 +211,7 @@ with graph.as_default():
     valid_dataset = tf.constant(valid_examples, dtype=tf.int32)
     # Complexity inputs
     train_complexity = tf.placeholder(tf.float64, shape=[batch_size, 1])
+    norm_train_complexity = tf.scalar_mul((1 / norm_constant), train_complexity)
 
   with tf.device('/cpu:0'):
     with tf.name_scope('embeddings'):
@@ -241,8 +248,9 @@ with graph.as_default():
             num_classes=vocabulary_size))
     # Complexity loss
     complexity_prediction = tf.matmul(embed, complexity_weights)
+    sig_complexity_prediction = tf.sigmoid(complexity_prediction)
     loss_complexity = tf.losses.\
-            mean_squared_error(train_complexity, complexity_prediction)
+            mean_squared_error(norm_train_complexity, sig_complexity_prediction)
     # Whole network loss as sum ofweighted context and complexity loss
     w_loss_context = tf.scalar_mul(alpha, loss_context)
     w_loss_complexity = tf.scalar_mul((1 - alpha), loss_complexity)
