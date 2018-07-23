@@ -5,8 +5,8 @@ from bootstrapped_lexicon import ngram_repr_bag_of_words
 import gensim
 
 
-model = gensim.models.KeyedVectors.load_word2vec_format('resources/' + \
-            'word-embeddings/GoogleNews-vectors-negative300.bin', binary=True)
+#model = gensim.models.KeyedVectors.load_word2vec_format('resources/' + \
+#            'word-embeddings/GoogleNews-vectors-negative300.bin', binary=True)
 
 seeds_complex = ['aboriginal']
 seeds_non_complex = ['bad']
@@ -15,7 +15,7 @@ seeds_non_complex = ['bad']
 vocabulary = []
 vocabulary.extend(seeds_complex)
 vocabulary.extend(seeds_non_complex)
-vocabulary.extend(['good', 'Inuit'])
+vocabulary.extend(['good', 'Inuit', 'and'])
 
 print('---------Complex Seeds----------------')
 print(seeds_complex)

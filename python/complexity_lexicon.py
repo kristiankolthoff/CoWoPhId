@@ -6,8 +6,8 @@ from bootstrapped_lexicon import missing_strat_random
 from bootstrapped_lexicon import ngram_embedding_similarity
 from bootstrapped_lexicon import ngram_repr_bag_of_words
 
-#model = gensim.models.KeyedVectors.load_word2vec_format('resources/' + \
-#            'word-embeddings/GoogleNews-vectors-negative300.bin', binary=True)
+model = gensim.models.KeyedVectors.load_word2vec_format('resources/' + \
+            'word-embeddings/GoogleNews-vectors-negative300.bin', binary=True)
 
 TRAIN_ENGLISH_WIKIPEDIA = "../cwishareddataset/traindevset/" + \
                            "english/Wikipedia_Train.tsv"
