@@ -28,25 +28,18 @@ def ngram_repr_weighted_bow(word_vecs, words, alpha, unigram_prob, ngram_repr):
                 for vec, word in zip(word_vecs, words)]
     return ngram_repr(weighted_vecs)  
 
-#word_freq_wiki = {}
-#sum_counts = 0
-#with open("resources/word-freq-dumps/enwiki-20150602-words-frequency.txt", encoding="utf8") as file:
-#    for line in file:
-#        word, freq = line.partition(" ")[::2]
-#        sum_counts+=int(freq)
-#        word_freq_wiki[word.strip()] = int(freq)
-#        
-#def get_unigram_probability(word):
-#    return word_freq_wiki[word] / sum_counts
+word_freq_wiki = {}
+sum_counts = 0
+with open("resources/word-freq-dumps/enwiki-20150602-words-frequency.txt", encoding="utf8") as file:
+    for line in file:
+        word, freq = line.partition(" ")[::2]
+        sum_counts+=int(freq)
+        word_freq_wiki[word.strip()] = int(freq)
         
+def get_unigram_probability(word):
+    return word_freq_wiki.get(word,1) / (sum_counts + len(word_freq_wiki))
 
-#from gensim.test.utils import datapath, get_tmpfile
-#from gensim.models import KeyedVectors
-#from gensim.scripts.glove2word2vec import glove2word2vec
-#
-#MAIN_PATH = 'D:/workspace_python/CoWoReId/python/resources/word-embeddings/'
-#glove_file = datapath(MAIN_PATH + 'glove.6B.200d.txt')
-#tmp_file = get_tmpfile("glove2word2vec.txt")
-#glove2word2vec(glove_file, tmp_file)
-#
-#model_glove = KeyedVectors.load_word2vec_format(tmp_file)
+def ngram_repr_wiki_weighted_bow(word_vecs, words, alpha, ngram_repr):
+    weighted_vecs = [(alpha/(alpha+get_unigram_probability(word))) * vec \
+                for vec, word in zip(word_vecs, words)]
+    return ngram_repr(weighted_vecs)    
