@@ -9,21 +9,31 @@ def missing_strat_zeros(word, dim):
     return np.zeros(dim)
 
 def ngram_repr_bow_mean(word_vecs, *args):
+    if np.array(word_vecs).ndim == 1:
+        return word_vecs
     return np.mean(word_vecs, axis = 0)
 
 def ngram_repr_bow_median(word_vecs, *args):
+    if np.array(word_vecs).ndim == 1:
+        return word_vecs
     return np.median(word_vecs, axis = 0)
 
 def ngram_repr_bow_max(word_vecs, *args):
+    if np.array(word_vecs).ndim == 1:
+        return word_vecs
     return np.max(word_vecs, axis = 0)
 
 def ngram_repr_bow_min(word_vecs, *args):
+    if np.array(word_vecs).ndim == 1:
+        return word_vecs
     return np.min(word_vecs, axis = 0)
 
-def ngram_repr_bow_concat(word_vecs, ngram_bow = [ngram_repr_bow_max]):
-    return np.concatenate([ngram_repr(word_vecs) for ngram_repr in ngram_bow])
-
+def ngram_repr_bow_concat(word_vecs, ngram_bow = [ngram_repr_bow_max], *args):
+        return np.concatenate([ngram_repr(word_vecs, *args) for ngram_repr in ngram_bow])
+    
 def ngram_repr_weighted_bow(word_vecs, words, alpha, unigram_prob, ngram_repr):
+    if np.array(word_vecs).ndim == 1:
+        return word_vecs
     weighted_vecs = [(alpha/(alpha+unigram_prob(word))) * vec \
                 for vec, word in zip(word_vecs, words)]
     return ngram_repr(weighted_vecs)  
